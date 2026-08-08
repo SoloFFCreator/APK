@@ -9,7 +9,6 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-22.04
 
     steps:
@@ -39,61 +38,41 @@ jobs:
         "build-tools;29.0.3"
 
 
-    # Fix gradlew file
-    - name: Fix Gradle Wrapper
-      run: |
-
-        echo "Before:"
-        head -5 gradlew
-
-        sudo apt-get update
-        sudo apt-get install -y dos2unix
-
-        dos2unix gradlew
-
-        chmod 755 gradlew
-
-        echo "After:"
-        ls -l gradlew
-
-
     - name: Fix Gradle URL
       run: |
-
         sed -i \
         's#^distributionUrl=.*#distributionUrl=https://services.gradle.org/distributions/gradle-5.4.1-all.zip#' \
         gradle/wrapper/gradle-wrapper.properties
 
 
+    - name: Install Gradle
+      run: |
+        wget https://services.gradle.org/distributions/gradle-5.4.1-bin.zip
+
+        unzip -q gradle-5.4.1-bin.zip
+
+        echo "$PWD/gradle-5.4.1/bin" >> $GITHUB_PATH
+
+
+    - name: Check Gradle
+      run: |
+        gradle --version
+
+
     - name: Remove Firebase plugin
       run: |
-
         if [ ! -f app/google-services.json ]; then
-
-          sed -i "/apply plugin: 'com.google.gms.google-services'/d" \
-          app/build.gradle
-
+          sed -i "/apply plugin: 'com.google.gms.google-services'/d" app/build.gradle
         fi
-
-
-    - name: Test Gradle Wrapper
-      run: |
-
-        bash gradlew --version
 
 
     - name: Build APK
       run: |
-
-        bash gradlew assembleDebug \
-        --stacktrace \
-        --no-daemon
+        gradle assembleDebug --stacktrace --no-daemon
 
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-
-        name: apk
-
+        name: APK
         path: app/build/outputs/apk/debug/*.apk
