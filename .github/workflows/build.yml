@@ -17,18 +17,19 @@ jobs:
       uses: actions/checkout@v4
 
 
+    # Java 17 only for Android SDK
     - name: Setup Java 17
       uses: actions/setup-java@v4
       with:
         distribution: temurin
-        java-version: 17
+        java-version: '17'
 
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
 
-    - name: Install SDK
+    - name: Install Android SDK
       run: |
         yes | sdkmanager --licenses || true
 
@@ -38,25 +39,23 @@ jobs:
         "build-tools;29.0.3"
 
 
-    - name: Fix Gradle URL
+    # Install Java 8 manually for Gradle
+    - name: Install Java 8
       run: |
+        sudo apt update
+        sudo apt install -y openjdk-8-jdk
+
+        echo "JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64" >> $GITHUB_ENV
+
+
+    - name: Fix Gradle
+      run: |
+
+        chmod +x gradlew
+
         sed -i \
         's#^distributionUrl=.*#distributionUrl=https://services.gradle.org/distributions/gradle-5.4.1-all.zip#' \
         gradle/wrapper/gradle-wrapper.properties
-
-
-    - name: Install Gradle
-      run: |
-        wget https://services.gradle.org/distributions/gradle-5.4.1-bin.zip
-
-        unzip -q gradle-5.4.1-bin.zip
-
-        echo "$PWD/gradle-5.4.1/bin" >> $GITHUB_PATH
-
-
-    - name: Check Gradle
-      run: |
-        gradle --version
 
 
     - name: Remove Firebase plugin
@@ -66,9 +65,24 @@ jobs:
         fi
 
 
+    - name: Check Java
+      run: |
+        echo $JAVA_HOME
+        java -version
+
+
+    - name: Install Gradle
+      run: |
+        wget -q https://services.gradle.org/distributions/gradle-5.4.1-bin.zip
+        unzip -q gradle-5.4.1-bin.zip
+        echo "$PWD/gradle-5.4.1/bin" >> $GITHUB_PATH
+
+
     - name: Build APK
       run: |
-        gradle assembleDebug --stacktrace --no-daemon
+        gradle assembleDebug \
+        --no-daemon \
+        --stacktrace
 
 
     - name: Upload APK
