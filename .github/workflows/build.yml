@@ -1,14 +1,16 @@
-name: Build Android APK
+name: Build APK
 
 on:
   push:
     branches:
       - main
       - master
+
   pull_request:
     branches:
       - main
       - master
+
   workflow_dispatch:
 
 permissions:
@@ -16,58 +18,84 @@ permissions:
 
 jobs:
   build:
-    name: Build APK
+    name: Build Android APK
     runs-on: ubuntu-22.04
 
     steps:
-      # ---------------------------------------
+      # ==============================
       # Checkout
-      # ---------------------------------------
+      # ==============================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ---------------------------------------
-      # Java 8
-      # Required by this old Android Gradle
-      # Plugin / Kotlin configuration
-      # ---------------------------------------
-      - name: Set up Java 8
+      # ==============================
+      # Java 17
+      # Required by current Android
+      # SDK command-line tools
+      # ==============================
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # ==============================
+      # Android SDK
+      # ==============================
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # ==============================
+      # Install Android SDK 29
+      # ==============================
+      - name: Install Android SDK 29
+        run: |
+          yes | sdkmanager --licenses || true
+
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-29" \
+            "build-tools;29.0.3"
+
+      # ==============================
+      # Fix Gradle wrapper
+      # ==============================
+      - name: Fix Gradle wrapper
+        run: |
+          sed -i 's#^distributionUrl=.*#distributionUrl=https://services.gradle.org/distributions/gradle-5.4.1-all.zip#' \
+            gradle/wrapper/gradle-wrapper.properties
+
+          cat gradle/wrapper/gradle-wrapper.properties
+
+      # ==============================
+      # Switch to Java 8
+      #
+      # Your old Android Gradle Plugin
+      # requires Java 8 for Gradle build.
+      # ==============================
+      - name: Set up Java 8 for Gradle
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '8'
 
-      # ---------------------------------------
-      # Android SDK
-      # ---------------------------------------
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK 29
+      # ==============================
+      # Verify Java
+      # ==============================
+      - name: Check Java
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-29" "build-tools;29.0.3"
+          java -version
+          echo "JAVA_HOME=$JAVA_HOME"
 
-      # ---------------------------------------
-      # Fix Gradle wrapper
-      # The repository currently contains a
-      # local file:///home/ubuntu/... URL.
-      # ---------------------------------------
-      - name: Fix Gradle wrapper
-        run: |
-          sed -i \
-            's#distributionUrl=file:///home/ubuntu/mega-mall/gradle/wrapper/gradle-5.4.1-all.zip#distributionUrl=https://services.gradle.org/distributions/gradle-5.4.1-all.zip#' \
-            gradle/wrapper/gradle-wrapper.properties
-
-      # ---------------------------------------
+      # ==============================
       # Make Gradle executable
-      # ---------------------------------------
+      # ==============================
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
-      # ---------------------------------------
+      # ==============================
       # Gradle cache
-      # ---------------------------------------
+      # ==============================
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
@@ -78,50 +106,50 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      # ---------------------------------------
-      # Remove Google Services plugin when
-      # google-services.json is not present.
-      #
-      # This allows the APK to compile without
-      # exposing Firebase configuration/secrets.
-      # ---------------------------------------
-      - name: Prepare Firebase configuration
+      # ==============================
+      # Firebase configuration
+      # ==============================
+      - name: Check Firebase configuration
         run: |
           if [ ! -f "app/google-services.json" ]; then
             echo "google-services.json not found."
-            echo "Removing Google Services Gradle plugin for CI build."
+            echo "Removing Google Services plugin for CI build."
+
             sed -i "/apply plugin: 'com.google.gms.google-services'/d" app/build.gradle
+          else
+            echo "google-services.json found."
           fi
 
-      # ---------------------------------------
-      # Show Gradle version
-      # ---------------------------------------
+      # ==============================
+      # Check Gradle
+      # ==============================
       - name: Check Gradle
-        run: ./gradlew --version
+        run: |
+          ./gradlew --version
 
-      # ---------------------------------------
-      # Build Debug APK
-      # ---------------------------------------
+      # ==============================
+      # Build APK
+      # ==============================
       - name: Build Debug APK
         run: |
           ./gradlew assembleDebug \
             --stacktrace \
             --no-daemon
 
-      # ---------------------------------------
-      # Find generated APK
-      # ---------------------------------------
+      # ==============================
+      # Find APK
+      # ==============================
       - name: List APK files
         run: |
           find app/build/outputs/apk -type f -name "*.apk" -print
 
-      # ---------------------------------------
+      # ==============================
       # Upload APK
-      # ---------------------------------------
+      # ==============================
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MegaMall-debug-apk
+          name: APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
