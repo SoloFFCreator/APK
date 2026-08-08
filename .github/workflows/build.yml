@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    name: Build APK
+
     runs-on: ubuntu-22.04
 
     steps:
@@ -22,14 +22,14 @@ jobs:
       uses: actions/setup-java@v4
       with:
         distribution: temurin
-        java-version: '17'
+        java-version: 17
 
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
 
-    - name: Install Android SDK
+    - name: Install SDK
       run: |
         yes | sdkmanager --licenses || true
 
@@ -39,44 +39,61 @@ jobs:
         "build-tools;29.0.3"
 
 
-    - name: Fix Gradle wrapper
+    # Fix gradlew file
+    - name: Fix Gradle Wrapper
       run: |
+
+        echo "Before:"
+        head -5 gradlew
+
+        sudo apt-get update
+        sudo apt-get install -y dos2unix
+
+        dos2unix gradlew
+
+        chmod 755 gradlew
+
+        echo "After:"
+        ls -l gradlew
+
+
+    - name: Fix Gradle URL
+      run: |
+
         sed -i \
         's#^distributionUrl=.*#distributionUrl=https://services.gradle.org/distributions/gradle-5.4.1-all.zip#' \
         gradle/wrapper/gradle-wrapper.properties
 
 
-    - name: Prepare Gradle
+    - name: Remove Firebase plugin
       run: |
-        chmod +x gradlew
 
-        echo "JAVA_HOME=$JAVA_HOME"
-
-        export JAVA_HOME=$JAVA_HOME
-
-        java -version
-
-
-    - name: Remove Firebase plugin if missing
-      run: |
         if [ ! -f app/google-services.json ]; then
-          sed -i "/apply plugin: 'com.google.gms.google-services'/d" app/build.gradle
+
+          sed -i "/apply plugin: 'com.google.gms.google-services'/d" \
+          app/build.gradle
+
         fi
 
 
-    - name: Build APK
-      env:
-        JAVA_HOME: ${{ env.JAVA_HOME }}
+    - name: Test Gradle Wrapper
       run: |
-        chmod +x ./gradlew
 
-        ./gradlew assembleDebug \
-        --no-daemon \
-        --stacktrace
+        bash gradlew --version
+
+
+    - name: Build APK
+      run: |
+
+        bash gradlew assembleDebug \
+        --stacktrace \
+        --no-daemon
 
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug
+
+        name: apk
+
         path: app/build/outputs/apk/debug/*.apk
