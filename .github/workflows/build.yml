@@ -1,184 +1,51 @@
-name: Build Android APK
+name: Windows VM Session
 
 on:
   workflow_dispatch:
 
-  push:
-    branches:
-      - main
-      - master
-
 jobs:
-  build:
-    name: Build APK
-    runs-on: ubuntu-22.04
+  windows:
+    name: Windows 6 Hour VM
+    runs-on: windows-2025
+
+    timeout-minutes: 360
 
     steps:
-
-      # ==========================================
-      # Checkout
-      # ==========================================
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-
-      # ==========================================
-      # Java 17
-      # Required by modern Android SDK tools
-      # ==========================================
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-          architecture: x64
-
-
-      # ==========================================
-      # Android SDK
-      # ==========================================
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-
-      # ==========================================
-      # Install ONLY the SDK required by project
-      # ==========================================
-      - name: Install Android 29
+      - name: Show Windows information
+        shell: powershell
         run: |
-          yes | sdkmanager --licenses || true
+          Write-Host "=== Windows ==="
+          Get-ComputerInfo |
+            Select-Object WindowsProductName,
+                          WindowsVersion,
+                          OsBuildNumber,
+                          OsArchitecture
 
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-29" \
-            "build-tools;29.0.3"
-
-
-      # ==========================================
-      # Remove remote SDK repository metadata
-      #
-      # Old AGP 3.5.x cannot parse modern
-      # Android extension API values such as 36x.
-      # ==========================================
-      - name: Remove modern SDK repository metadata
+      - name: Show hardware
+        shell: powershell
         run: |
-          echo "Cleaning modern repository metadata..."
+          Write-Host "=== CPU ==="
+          Get-CimInstance Win32_Processor |
+            Select-Object Name, NumberOfLogicalProcessors
 
-          rm -f "$ANDROID_HOME/repositories.cfg" || true
+          Write-Host "=== RAM ==="
+          Get-CimInstance Win32_ComputerSystem |
+            Select-Object @{
+              Name="RAM_GB"
+              Expression={[math]::Round($_.TotalPhysicalMemory / 1GB, 2)}
+            }
 
-          rm -f "$ANDROID_HOME/.knownPackages" || true
+          Write-Host "=== Disk ==="
+          Get-PSDrive C |
+            Select-Object Used,Free
 
-          find "$ANDROID_HOME" \
-            -type f \
-            \( -name "repository*.xml" -o -name "repository*.xml.gz" \) \
-            -delete 2>/dev/null || true
-
-          echo "SDK contents:"
-          ls -la "$ANDROID_HOME"
-
-
-      # ==========================================
-      # Install Java 8 for old Gradle / AGP
-      # ==========================================
-      - name: Install Java 8
+      - name: Keep VM running
+        shell: powershell
         run: |
-          sudo apt-get update
-          sudo apt-get install -y openjdk-8-jdk
+          Write-Host "Windows runner is active."
+          Write-Host "Maximum job duration: 6 hours."
 
-          echo "JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64" >> "$GITHUB_ENV"
-
-
-      # ==========================================
-      # Fix Gradle wrapper
-      # ==========================================
-      - name: Fix Gradle wrapper
-        run: |
-          chmod +x gradlew
-
-          sed -i \
-            's#^distributionUrl=.*#distributionUrl=https://services.gradle.org/distributions/gradle-5.4.1-all.zip#' \
-            gradle/wrapper/gradle-wrapper.properties
-
-
-      # ==========================================
-      # Remove Firebase plugin if JSON is absent
-      # ==========================================
-      - name: Prepare Firebase
-        run: |
-          if [ ! -f "app/google-services.json" ]; then
-            echo "google-services.json not found."
-
-            sed -i \
-              "/apply plugin: 'com.google.gms.google-services'/d" \
-              app/build.gradle
-          fi
-
-
-      # ==========================================
-      # Install Gradle directly
-      # Avoid broken gradlew
-      # ==========================================
-      - name: Install Gradle 5.4.1
-        run: |
-          wget -q \
-            https://services.gradle.org/distributions/gradle-5.4.1-bin.zip
-
-          unzip -q gradle-5.4.1-bin.zip
-
-          echo "$PWD/gradle-5.4.1/bin" >> "$GITHUB_PATH"
-
-
-      # ==========================================
-      # Check environment
-      # ==========================================
-      - name: Check build environment
-        run: |
-          echo "JAVA_HOME=$JAVA_HOME"
-
-          java -version
-
-          gradle --version
-
-          echo "ANDROID_HOME=$ANDROID_HOME"
-
-          test -d "$ANDROID_HOME/platforms/android-29"
-
-          test -d "$ANDROID_HOME/build-tools/29.0.3"
-
-          echo "Android SDK 29 is installed."
-
-
-      # ==========================================
-      # Build APK
-      # ==========================================
-      - name: Build APK
-        run: |
-          gradle assembleDebug \
-            --no-daemon \
-            --offline \
-            --stacktrace
-
-
-      # ==========================================
-      # Find APK
-      # ==========================================
-      - name: Find APK
-        run: |
-          echo "APK files:"
-
-          find app/build/outputs/apk \
-            -type f \
-            -name "*.apk" \
-            -print
-
-
-      # ==========================================
-      # Upload APK
-      # ==========================================
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: APK
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: 30
+          for ($i = 1; $i -le 360; $i++) {
+              Write-Host "VM active - minute $i / 360"
+              Start-Sleep -Seconds 60
+          }
