@@ -1,4 +1,4 @@
-name: Build APK
+name: Build Android APK
 
 on:
   push:
@@ -18,37 +18,38 @@ permissions:
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build APK
     runs-on: ubuntu-22.04
 
     steps:
-      # ==============================
+
+      # ============================
       # Checkout
-      # ==============================
+      # ============================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ==============================
+      # ============================
       # Java 17
-      # Required by current Android
-      # SDK command-line tools
-      # ==============================
-      - name: Set up Java 17
+      # Required by modern
+      # Android SDK tools
+      # ============================
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # ==============================
+      # ============================
       # Android SDK
-      # ==============================
-      - name: Set up Android SDK
+      # ============================
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # ==============================
+      # ============================
       # Install Android SDK 29
-      # ==============================
-      - name: Install Android SDK 29
+      # ============================
+      - name: Install Android SDK
         run: |
           yes | sdkmanager --licenses || true
 
@@ -57,45 +58,61 @@ jobs:
             "platforms;android-29" \
             "build-tools;29.0.3"
 
-      # ==============================
-      # Fix Gradle wrapper
-      # ==============================
+      # ============================
+      # Fix Gradle wrapper URL
+      # ============================
       - name: Fix Gradle wrapper
         run: |
-          sed -i 's#^distributionUrl=.*#distributionUrl=https://services.gradle.org/distributions/gradle-5.4.1-all.zip#' \
+          sed -i \
+            's#^distributionUrl=.*#distributionUrl=https://services.gradle.org/distributions/gradle-5.4.1-all.zip#' \
             gradle/wrapper/gradle-wrapper.properties
 
+          echo "Gradle wrapper:"
           cat gradle/wrapper/gradle-wrapper.properties
 
-      # ==============================
-      # Switch to Java 8
-      #
-      # Your old Android Gradle Plugin
-      # requires Java 8 for Gradle build.
-      # ==============================
-      - name: Set up Java 8 for Gradle
+      # ============================
+      # Java 8
+      # Required by this old
+      # Android Gradle project
+      # ============================
+      - name: Setup Java 8
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '8'
 
-      # ==============================
-      # Verify Java
-      # ==============================
+      # ============================
+      # Repair executable permissions
+      # ============================
+      - name: Fix executable permissions
+        run: |
+          chmod +x ./gradlew
+
+          if [ -n "$JAVA_HOME" ]; then
+            chmod +x "$JAVA_HOME/bin/java" || true
+            chmod +x "$JAVA_HOME/bin/javac" || true
+          fi
+
+          echo "gradlew permissions:"
+          ls -l ./gradlew
+
+          echo "JAVA_HOME:"
+          echo "$JAVA_HOME"
+
+          echo "Java permissions:"
+          ls -l "$JAVA_HOME/bin/java"
+
+      # ============================
+      # Check Java
+      # ============================
       - name: Check Java
         run: |
           java -version
-          echo "JAVA_HOME=$JAVA_HOME"
+          "$JAVA_HOME/bin/java" -version
 
-      # ==============================
-      # Make Gradle executable
-      # ==============================
-      - name: Make Gradle executable
-        run: chmod +x ./gradlew
-
-      # ==============================
+      # ============================
       # Gradle cache
-      # ==============================
+      # ============================
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
@@ -106,46 +123,44 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      # ==============================
+      # ============================
       # Firebase configuration
-      # ==============================
-      - name: Check Firebase configuration
+      # ============================
+      - name: Prepare Firebase configuration
         run: |
           if [ ! -f "app/google-services.json" ]; then
             echo "google-services.json not found."
-            echo "Removing Google Services plugin for CI build."
+            echo "Removing Google Services plugin."
 
-            sed -i "/apply plugin: 'com.google.gms.google-services'/d" app/build.gradle
+            sed -i "/apply plugin: 'com.google.gms.google-services'/d" \
+              app/build.gradle
           else
             echo "google-services.json found."
           fi
 
-      # ==============================
-      # Check Gradle
-      # ==============================
-      - name: Check Gradle
-        run: |
-          ./gradlew --version
-
-      # ==============================
-      # Build APK
-      # ==============================
+      # ============================
+      # Build
+      # ============================
       - name: Build Debug APK
         run: |
-          ./gradlew assembleDebug \
-            --stacktrace \
-            --no-daemon
+          chmod +x ./gradlew
 
-      # ==============================
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --stacktrace \
+            --info
+
+      # ============================
       # Find APK
-      # ==============================
-      - name: List APK files
+      # ============================
+      - name: Find APK
         run: |
+          echo "Generated APK files:"
           find app/build/outputs/apk -type f -name "*.apk" -print
 
-      # ==============================
+      # ============================
       # Upload APK
-      # ==============================
+      # ============================
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
